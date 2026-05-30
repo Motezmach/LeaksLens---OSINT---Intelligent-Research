@@ -74,3 +74,6 @@ def require_role(*roles: UserRole):
 
 CurrentUser = Annotated[User, Depends(get_current_active_user)]
 DBSession = Annotated[AsyncSession, Depends(get_db)]
+
+# Search/lookup requires analyst or admin; viewers are read-only on history.
+SearchUser = Annotated[User, Depends(require_role(UserRole.ANALYST, UserRole.ADMIN))]

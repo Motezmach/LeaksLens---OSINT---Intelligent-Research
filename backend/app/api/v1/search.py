@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app.api.deps import CurrentUser, DBSession
+from app.api.deps import DBSession, SearchUser
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.models.search import SearchQuery
@@ -21,7 +21,7 @@ router = APIRouter()
 async def search(
     request: Request,
     payload: SearchRequest,
-    current_user: CurrentUser,
+    current_user: SearchUser,
     db: DBSession,
 ) -> SearchResponse:
     try:

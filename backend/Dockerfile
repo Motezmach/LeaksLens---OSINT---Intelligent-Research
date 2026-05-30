@@ -47,5 +47,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD wget -qO- http://127.0.0.1:8000/health >/dev/null 2>&1 || exit 1
 
+# Trust X-Forwarded-* only from the Docker bridge (Caddy reverse proxy),
+# never from arbitrary clients - prevents IP spoofing / rate-limit bypass.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--proxy-headers", "--forwarded-allow-ips=*"]
+     "--proxy-headers", "--forwarded-allow-ips=127.0.0.1,172.16.0.0/12"]

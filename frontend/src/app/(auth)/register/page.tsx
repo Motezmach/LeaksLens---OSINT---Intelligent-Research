@@ -25,13 +25,14 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      await register(email, password, fullName);
+      await register(email, password, fullName, inviteCode);
       router.push("/");
     } catch (err) {
       toast({
@@ -82,6 +83,16 @@ export default function RegisterPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="invite_code">Invite code</Label>
+            <Input
+              id="invite_code"
+              autoComplete="off"
+              placeholder="Required if your instance is invite-only"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
             />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>

@@ -16,6 +16,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=12, max_length=128)
+    invite_code: Optional[str] = Field(default=None, max_length=128)
 
     @field_validator("password")
     @classmethod

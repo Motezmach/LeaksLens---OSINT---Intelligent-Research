@@ -28,11 +28,17 @@ export function useAuth() {
   );
 
   const register = useCallback(
-    async (email: string, password: string, fullName?: string) => {
+    async (
+      email: string,
+      password: string,
+      fullName?: string,
+      inviteCode?: string
+    ) => {
       await api.post("/auth/register", {
         email,
         password,
         full_name: fullName || null,
+        invite_code: inviteCode || null,
       });
       return login(email, password);
     },

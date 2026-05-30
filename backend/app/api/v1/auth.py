@@ -1,4 +1,5 @@
 """Authentication endpoints."""
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -25,6 +26,10 @@ router = APIRouter()
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
+# A bcrypt hash computed once at startup. Verifying against it when the account
+# does not exist equalizes login timing, preventing email enumeration.
+_DUMMY_HASH = hash_password("dummy-password-for-constant-time-login")
+
 
 @router.post(
     "/register",
@@ -33,11 +38,21 @@ LOCKOUT_MINUTES = 15
 )
 @limiter.limit(f"{settings.AUTH_RATE_LIMIT_PER_MINUTE}/minute")
 async def register(request: Request, payload: UserCreate, db: DBSession) -> User:
+    # Registration gate: if an invite code is configured, require a match.
+    if settings.INVITE_CODE:
+        provided = payload.invite_code or ""
+        if not hmac.compare_digest(provided, settings.INVITE_CODE):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="A valid invite code is required to register.",
+            )
+
     existing = await db.execute(select(User).where(User.email == payload.email.lower()))
     if existing.scalar_one_or_none():
+        # Generic message to avoid confirming which emails are registered.
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to register with the provided details.",
         )
 
     user = User(
@@ -71,6 +86,8 @@ async def login(
     )
 
     if user is None:
+        # Run a dummy verification so timing matches the real path, then fail.
+        verify_password(form_data.password, _DUMMY_HASH)
         raise auth_error
 
     if user.is_locked():

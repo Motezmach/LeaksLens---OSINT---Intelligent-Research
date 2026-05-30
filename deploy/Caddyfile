@@ -1,8 +1,9 @@
 # Caddy reverse proxy for the LeakLens backend on a VPS.
-# Provides automatic TLS and forwards API traffic to the backend.
+# Provides automatic TLS (Let's Encrypt) and forwards API traffic to the backend.
 #
-# Replace api.leaklens.example.com with your real domain and point an A record
-# at the VPS. Caddy will obtain a Let's Encrypt certificate automatically.
+# One VPS can host MULTIPLE projects: give each its own subdomain block below.
+# Caddy routes by hostname and gets a separate certificate for each. Point an
+# A record for every subdomain at this VPS's IP.
 
 api.leaklens.example.com {
 	encode zstd gzip
@@ -22,3 +23,17 @@ api.leaklens.example.com {
 		header_up X-Forwarded-Proto {scheme}
 	}
 }
+
+# ---------------------------------------------------------------------------
+# Example: a SECOND project on the same VPS (e.g. your vuln scanner backend).
+# Uncomment, set the real subdomain, and point it at that project's container
+# or host port. Each project keeps its own Docker Compose stack / port.
+# ---------------------------------------------------------------------------
+# api.vulnscanner.example.com {
+# 	encode zstd gzip
+# 	reverse_proxy 127.0.0.1:8001 {
+# 		header_up X-Real-IP {remote_host}
+# 		header_up X-Forwarded-For {remote_host}
+# 		header_up X-Forwarded-Proto {scheme}
+# 	}
+# }

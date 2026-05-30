@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     BCRYPT_ROUNDS: int = 12
 
+    # Registration gate: when set, /register requires a matching invite code.
+    # Leave empty to allow open registration (not recommended in production).
+    INVITE_CODE: str = ""
+
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
 

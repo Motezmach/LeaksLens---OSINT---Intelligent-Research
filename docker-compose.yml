@@ -34,6 +34,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       DEBUG: ${DEBUG:-false}
       SECRET_KEY: ${SECRET_KEY}
+      INVITE_CODE: ${INVITE_CODE:-}
       POSTGRES_USER: ${POSTGRES_USER:-leaklens}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-leaklens}
