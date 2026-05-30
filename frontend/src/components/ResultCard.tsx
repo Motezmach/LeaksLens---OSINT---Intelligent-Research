@@ -98,9 +98,6 @@ export function ResultCard({ record }: { record: LeakRecord }) {
             <KeyRound className="h-3 w-3" /> credentials
           </Badge>
         )}
-        <Badge className="border-border bg-secondary text-muted-foreground">
-          {record.provider}
-        </Badge>
         {record.breach_date && (
           <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />

@@ -27,9 +27,6 @@ export function EnrichmentPanel({ items }: { items: EnrichmentItem[] }) {
               <div className="flex items-center gap-2">
                 <Icon className="h-4 w-4 text-primary" />
                 <span className="font-medium">{item.title}</span>
-                <span className="ml-auto rounded bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
-                  {item.source}
-                </span>
               </div>
               <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
                 {item.summary}
