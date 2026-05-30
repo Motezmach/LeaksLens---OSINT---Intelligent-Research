@@ -21,7 +21,10 @@ const cspDirectives = [
   "form-action 'self'",
   "object-src 'none'",
 ];
-if (!isDev) cspDirectives.push("upgrade-insecure-requests");
+// Only enforce upgrade-insecure-requests when the API is also behind HTTPS.
+// When the API is plain HTTP (e.g. bare IP), this directive would block it.
+const apiIsHttps = apiOrigin.startsWith("https://");
+if (!isDev && apiIsHttps) cspDirectives.push("upgrade-insecure-requests");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
