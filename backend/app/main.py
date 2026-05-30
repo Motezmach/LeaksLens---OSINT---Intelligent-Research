@@ -58,15 +58,16 @@ app.add_middleware(
 )
 
 if settings.ENVIRONMENT != "development":
+    _trusted = [
+        host.replace("https://", "").replace("http://", "").split("/")[0]
+        for host in settings.cors_origins_list
+    ] + ["localhost", "127.0.0.1"]
+    for h in settings.EXTRA_TRUSTED_HOSTS:
+        if h not in _trusted:
+            _trusted.append(h)
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["*"]
-        if settings.DEBUG
-        else [
-            host.replace("https://", "").replace("http://", "").rstrip("/")
-            for host in settings.cors_origins_list
-        ]
-        + ["localhost", "127.0.0.1"],
+        allowed_hosts=["*"] if settings.DEBUG else _trusted,
     )
 
 

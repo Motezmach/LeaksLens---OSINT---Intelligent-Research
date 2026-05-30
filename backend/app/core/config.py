@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
 
+    # Extra hosts accepted by TrustedHostMiddleware (e.g. your VPS IP).
+    # Comma-separated. CORS_ORIGINS hosts are always trusted automatically.
+    EXTRA_TRUSTED_HOSTS: List[str] = []
+
     # Database
     POSTGRES_USER: str = "leaklens"
     POSTGRES_PASSWORD: str
