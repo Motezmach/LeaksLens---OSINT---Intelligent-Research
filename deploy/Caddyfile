@@ -1,0 +1,24 @@
+# Caddy reverse proxy for the LeakLens backend on a VPS.
+# Provides automatic TLS and forwards API traffic to the backend.
+#
+# Replace api.leaklens.example.com with your real domain and point an A record
+# at the VPS. Caddy will obtain a Let's Encrypt certificate automatically.
+
+api.leaklens.example.com {
+	encode zstd gzip
+
+	# Security headers (defense in depth; backend also sets these).
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy backend:8000 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

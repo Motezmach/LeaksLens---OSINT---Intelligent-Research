@@ -1,0 +1,18 @@
+name: leaklens
+
+# Development overrides: hot reload + exposed Postgres port.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  backend:
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./backend/app:/app/app
