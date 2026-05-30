@@ -21,10 +21,9 @@ const cspDirectives = [
   "form-action 'self'",
   "object-src 'none'",
 ];
-// Only enforce upgrade-insecure-requests when the API is also behind HTTPS.
-// When the API is plain HTTP (e.g. bare IP), this directive would block it.
-const apiIsHttps = apiOrigin.startsWith("https://");
-if (!isDev && apiIsHttps) cspDirectives.push("upgrade-insecure-requests");
+// Safe to enable: in production, API calls go through the same-origin rewrite,
+// so there are no HTTP cross-origin requests to upgrade/block.
+if (!isDev) cspDirectives.push("upgrade-insecure-requests");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -56,6 +55,16 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+    ];
+  },
+  // Proxy /api/v1/* requests through Vercel to the backend server-side,
+  // avoiding mixed-content blocks when the API has no HTTPS domain.
+  async rewrites() {
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${apiOrigin}/api/v1/:path*`,
       },
     ];
   },

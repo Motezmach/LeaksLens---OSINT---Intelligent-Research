@@ -2,12 +2,18 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 import { useAuthStore } from "@/stores/auth";
 
+// In production the Next.js rewrite proxies /api/v1/* to the real backend,
+// so the browser never makes a cross-origin HTTP request (avoids mixed-content).
+// In development we still hit the backend directly for faster feedback.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const isServer = typeof window === "undefined";
+const useDirectUrl = process.env.NODE_ENV !== "production" || isServer;
+const baseURL = useDirectUrl ? `${API_URL}/api/v1` : "/api/v1";
 
 export const API_BASE = API_URL;
 
 export const api = axios.create({
-  baseURL: `${API_URL}/api/v1`,
+  baseURL,
   timeout: 30000,
   headers: { "Content-Type": "application/json" },
 });
@@ -26,7 +32,10 @@ async function refreshAccessToken(): Promise<string | null> {
   const store = useAuthStore.getState();
   if (!store.refreshToken) return null;
   try {
-    const { data } = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
+    const refreshUrl = useDirectUrl
+      ? `${API_URL}/api/v1/auth/refresh`
+      : "/api/v1/auth/refresh";
+    const { data } = await axios.post(refreshUrl, {
       refresh_token: store.refreshToken,
     });
     store.setTokens(data.access_token, data.refresh_token);
