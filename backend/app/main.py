@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -57,18 +56,9 @@ app.add_middleware(
     max_age=600,
 )
 
-if settings.ENVIRONMENT != "development":
-    _trusted = [
-        host.replace("https://", "").replace("http://", "").split("/")[0]
-        for host in settings.cors_origins_list
-    ] + ["localhost", "127.0.0.1"]
-    for h in settings.EXTRA_TRUSTED_HOSTS:
-        if h not in _trusted:
-            _trusted.append(h)
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=["*"] if settings.DEBUG else _trusted,
-    )
+# TrustedHostMiddleware is skipped: requests arrive via Vercel rewrites and
+# reverse proxies whose Host header we cannot predict. CORS + rate-limiting
+# already restrict which origins can call the API from a browser.
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
