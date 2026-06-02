@@ -1,0 +1,322 @@
+% ============================================================================
+% Chapter II -- Requirements Analysis and Specification
+% ============================================================================
+\chapter{Requirements Analysis and Specification}
+\label{chap:requirements}
+
+\section*{Introduction}
+
+This chapter defines the functional and technical foundations of the system:
+actors, requirements, data model, and technology choices. These specifications
+guide all design and implementation decisions in later chapters.
+
+% ----------------------------------------------------------------------------
+\section{Actor Identification}
+\label{sec:actors}
+% ----------------------------------------------------------------------------
+
+The platform is a multi-user system built on role-based access control (RBAC).
+Three actor levels interact with it:
+
+\renewcommand{\arraystretch}{1.45}
+\begin{table}[ht]
+\centering
+\caption{System actors and permissions.}
+\label{tab:actors}
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Actor} & \textbf{Description and Permissions} \\
+\midrule
+Guest (unauthenticated) &
+  Accesses public pages (landing, login, registration). May create an account
+  only with a valid invite code. \\[8pt]
+Analyst (default role) &
+  Runs breach searches (7 types + wildcard), views credential results,
+  consults search history, and re-runs past queries. \\[8pt]
+Administrator &
+  Inherits analyst permissions. Can manage user accounts and roles
+  (planned extension). \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Role enforcement is applied at the API layer through the \texttt{require\_role}
+dependency. The \texttt{viewer} role is reserved for future use and is
+explicitly excluded from search access.
+
+\subsection{Use Case Diagram}
+\label{sec:use-case}
+
+\figref{fig:use-case} follows standard UML notation: actors outside the
+system boundary, associations to use cases, and \texttt{<<include>>} /
+\texttt{<<extend>>} relationships between use cases. Three roles interact
+with the platform: unauthenticated guests (registration and login), analysts
+(search and history), and administrators (user management).
+
+\newpage
+\thispagestyle{plain}
+\vspace*{\fill}
+\begin{center}
+  \includegraphics[
+    width=\linewidth,
+    height=0.82\textheight,
+    keepaspectratio
+  ]{usecase-diagram.png}
+\end{center}
+\vspace*{\fill}
+\begin{center}
+  \captionof{figure}{UML use case diagram.}
+  \label{fig:use-case}
+\end{center}
+\vspace*{\fill}
+\clearpage
+
+\subsection{Breach Search Sequence}
+\label{sec:search-sequence}
+
+\figref{fig:search-sequence} describes the end-to-end path from user input
+to displayed results. When an authenticated analyst submits a search, the
+Next.js frontend sends a \texttt{POST /api/v1/search} request (proxied
+server-side in production to avoid mixed-content issues). The FastAPI backend
+validates the term against the selected search type, then delegates execution
+to the \emph{Search Engine}, which queries Snusbase (\texttt{POST /data/search})
+for breach records and calls free \emph{API Services} (LeakCheck, EmailRep,
+Cert Spotter) for supplementary context. Results are scored by severity,
+deduplicated, persisted as a \texttt{SearchQuery} row in PostgreSQL, and
+returned to the client as a \texttt{SearchResponse} JSON payload.
+
+\newpage
+\thispagestyle{plain}
+\vspace*{\fill}
+\begin{center}
+  \includegraphics[
+    width=\linewidth,
+    height=0.82\textheight,
+    keepaspectratio
+  ]{search-sequence.png}
+\end{center}
+\vspace*{\fill}
+\begin{center}
+  \captionof{figure}{Breach search sequence diagram.}
+  \label{fig:search-sequence}
+\end{center}
+\vspace*{\fill}
+
+\clearpage
+
+% ----------------------------------------------------------------------------
+\section{Functional Requirements}
+\label{sec:functional}
+% ----------------------------------------------------------------------------
+
+Functional requirements are grouped by domain.
+
+\subsection{Authentication and Account Management}
+
+\begin{description}[style=nextline,nosep,leftmargin=1.2cm]
+  \item[FR-01] Create an account with email, full name, and password
+    (minimum 12 characters, strength-validated). A valid invite code is
+    required when the registration gate is active.
+  \item[FR-02] Log in via email and password; receive JWT access and refresh
+    tokens (access token expires after 15~minutes).
+  \item[FR-03] Refresh an expired access token using the refresh token
+    (valid for 7~days).
+  \item[FR-04] Lock account after 5 failed login attempts for 15~minutes.
+\end{description}
+
+\subsection{Search}
+
+\begin{description}[style=nextline,nosep,leftmargin=1.2cm]
+  \item[FR-05] Search by seven types: email, username, IP, password, name,
+    hash, or domain.
+  \item[FR-06] Enforce type-specific input validation (email regex, IP
+    format, hash patterns).
+  \item[FR-07] Wildcard mode for pattern matching (e.g.,
+    \texttt{\%@gmail.com}); minimum 3 characters.
+  \item[FR-08] Display results grouped by source database with severity
+    ratings (critical / high / medium / low).
+\end{description}
+
+\subsection{Enrichment}
+
+\begin{description}[style=nextline,nosep,leftmargin=1.2cm]
+  \item[FR-09] Email searches: LeakCheck (breach names) and EmailRep.io
+    (reputation score).
+  \item[FR-10] Domain searches: Cert Spotter (subdomains) and Snusbase WHOIS.
+  \item[FR-11] IP searches: Snusbase IP WHOIS lookup.
+\end{description}
+
+\subsection{Search History and Authorization}
+
+\begin{description}[style=nextline,nosep,leftmargin=1.2cm]
+  \item[FR-12] Record every search (query, type, result count, timestamp).
+  \item[FR-13] View the last 200 searches and re-run any query.
+  \item[FR-14] Restrict search to \texttt{analyst} and \texttt{admin} roles;
+    \texttt{viewer} is read-only on history.
+\end{description}
+
+% ----------------------------------------------------------------------------
+\section{Non-Functional Requirements}
+\label{sec:nonfunctional}
+% ----------------------------------------------------------------------------
+
+\renewcommand{\arraystretch}{1.45}
+\begin{table}[ht]
+\centering
+\caption{Non-functional requirements.}
+\label{tab:nfr}
+\small
+\begin{tabularx}{\textwidth}{@{} l L{3.5cm} X @{}}
+\toprule
+\textbf{Category} & \textbf{Requirement} & \textbf{Solution} \\
+\midrule
+Security &
+  Protect data in transit and at rest &
+  JWT (access + refresh), bcrypt (12 rounds), rate limiting, CSP, HSTS,
+  CORS, invite-code gating, constant-time login \\[8pt]
+Performance &
+  Search response $<$ 3\,s &
+  \texttt{ThreadPoolExecutor} for concurrent API calls; async SQLAlchemy
+  for database I/O \\[8pt]
+Availability &
+  Auto-recovery after failure &
+  Docker \texttt{restart: unless-stopped}; PostgreSQL and backend health
+  checks \\[8pt]
+Portability &
+  Same behaviour in dev and prod &
+  Alpine multi-stage Docker build; \texttt{docker-compose.yml} \\[8pt]
+Maintainability &
+  Simple frontend updates &
+  Vercel auto-deploy on \texttt{git push} \\[8pt]
+Compliance &
+  Responsible breach-data use &
+  Invite-only registration; no local credential storage; rate limits \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ----------------------------------------------------------------------------
+\section{Data Model}
+\label{sec:datamodel}
+% ----------------------------------------------------------------------------
+
+The data model uses SQLAlchemy (async) with PostgreSQL~16. Two core entities
+and two enumerations structure persistence.
+
+\subsection{Enumerations}
+
+\begin{itemize}[nosep]
+  \item \textbf{UserRole:} \texttt{admin}, \texttt{analyst}, \texttt{viewer}
+  \item \textbf{SearchType:} \texttt{email}, \texttt{username}, \texttt{ip},
+        \texttt{password}, \texttt{hash}, \texttt{name}, \texttt{domain}
+\end{itemize}
+
+\subsection{Relationships and Integrity}
+
+\begin{itemize}[nosep]
+  \item A \texttt{User} owns zero or more \texttt{SearchQuery} records
+        (one-to-many).
+  \item Deleting a \texttt{User} cascades to their \texttt{SearchQuery}
+        records (\texttt{onDelete: CASCADE}).
+  \item The \texttt{email} field on \texttt{User} is unique.
+  \item Passwords are stored as bcrypt hashes; plaintext is never persisted.
+\end{itemize}
+
+\begin{figure}[ht]
+\centering
+\tikzfig{%
+\begin{tikzpicture}[
+  entity/.style={draw,rectangle,minimum width=3.2cm,minimum height=1.1cm,
+    align=center,font=\small\bfseries},
+  arrow/.style={-{Stealth[length=3mm]},thick},
+]
+  \node[entity,fill=blue!10] (user) {User};
+  \node[entity,fill=orange!10,right=3.5cm of user] (query) {SearchQuery};
+  \draw[arrow] (user) -- node[above,font=\scriptsize]{1}
+    node[below,font=\scriptsize]{owns 0..*} (query);
+\end{tikzpicture}%
+}
+\caption{Entity-relationship diagram.}
+\label{fig:erd}
+\end{figure}
+
+% ----------------------------------------------------------------------------
+\section{Technology Choices}
+\label{sec:techstack}
+% ----------------------------------------------------------------------------
+
+Table~\ref{tab:appstack} lists the development stack; Table~\ref{tab:infra}
+covers deployment and operations.
+
+\renewcommand{\arraystretch}{1.55}
+\begin{table}[H]
+\centering
+\caption{Application stack --- development technologies.}
+\label{tab:appstack}
+\small
+\begin{tabularx}{\textwidth}{@{} c l l X @{}}
+\toprule
+\textbf{Logo} & \textbf{Technology} & \textbf{Role} & \textbf{Justification} \\
+\midrule
+\logobox{0.55cm}{nextjs-logo.png} &
+  Next.js~15 & Frontend &
+  React framework with App Router, SSR, and API rewrites for backend
+  proxying. \\[6pt]
+\logobox{0.55cm}{fastapi-logo.png} &
+  FastAPI & Backend API &
+  Async Python framework with Pydantic validation and dependency injection
+  for RBAC. \\[6pt]
+\logobox{0.55cm}{postgresql-logo.png} &
+  PostgreSQL~16 & Database &
+  RDBMS with UUID support and async driver (\texttt{asyncpg}) via
+  SQLAlchemy. \\[6pt]
+\logobox{0.55cm}{snusbase-logo.png} &
+  Snusbase API & Breach engine &
+  Primary data source: 7 search types, wildcard, WHOIS lookups. \\[6pt]
+ &
+  SQLAlchemy & ORM &
+  Async session support and declarative models. \\[6pt]
+ &
+  httpx & HTTP client &
+  External API calls (Snusbase, enrichment services). \\[6pt]
+ &
+  Zustand & Client state &
+  Lightweight JWT and auth state on the frontend. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\renewcommand{\arraystretch}{1.45}
+\begin{table}[H]
+\centering
+\caption{Infrastructure --- deployment and operations.}
+\label{tab:infra}
+\small
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Technology} & \textbf{Role} & \textbf{Justification} \\
+\midrule
+Docker (Alpine) & Containerization &
+  Multi-stage build, non-root user, resource limits, Trivy scanning. \\[6pt]
+Docker Compose & Orchestration &
+  Backend + PostgreSQL stack with health checks and network isolation. \\[6pt]
+Vercel & Frontend hosting &
+  Automatic HTTPS, CDN, git-push deploy. \\[6pt]
+VPS (Linux) & Backend hosting &
+  Dedicated server running Docker Compose. \\[6pt]
+Nginx Proxy Manager & Reverse proxy &
+  TLS termination and subdomain routing (multi-project VPS). \\[6pt]
+GitHub & Version control &
+  Source hosting; Vercel deploy triggered on \texttt{main} push. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\FloatBarrier
+
+% ----------------------------------------------------------------------------
+\section*{Conclusion}
+
+This chapter defined 14 functional requirements, 6 non-functional categories,
+a two-entity data model, and the technology stack. These specifications form
+the basis for the architecture design in the next chapter.

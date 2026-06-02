@@ -1,0 +1,271 @@
+% ============================================================================
+% Chapter IV -- Implementation and Results
+% ============================================================================
+\chapter{Implementation and Results}
+\label{chap:implementation}
+
+\section*{Introduction}
+
+This chapter presents the concrete realization through screenshots, deployment
+evidence, and live search demonstrations on the production instance at
+\url{https://leakslens.vercel.app}.
+
+% ----------------------------------------------------------------------------
+\section{Development Environment}
+\label{sec:devenv}
+% ----------------------------------------------------------------------------
+
+\begin{table}[H]
+\centering
+\caption{Development and production environment.}
+\label{tab:devenv}
+\small
+\begin{tabularx}{\textwidth}{@{} l l X @{}}
+\toprule
+\textbf{Component} & \textbf{Version / Ref.} & \textbf{Usage} \\
+\midrule
+Development OS    & Windows 11              & Local development and testing \\
+Python            & 3.12 (Alpine)           & Backend runtime \\
+Node.js           & 20 LTS                  & Frontend build and SSR \\
+Docker Desktop    & 27+                     & Local containerization \\
+Cursor IDE        & Latest                  & Code editor with AI assistance \\
+Git               & 2.x                     & Version control \\
+VPS OS            & Ubuntu 22.04 LTS        & Production server \\
+VPS Specs         & 91.148.168.36           & Dedicated server \\
+Docker (VPS)      & 24+                     & Production containers \\
+Nginx Proxy Mgr   & Latest                  & Reverse proxy with SSL \\
+Vercel            & Free tier               & Frontend hosting \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ----------------------------------------------------------------------------
+\section{User Interface}
+\label{sec:ui}
+% ----------------------------------------------------------------------------
+
+The frontend uses Next.js~15, Tailwind CSS, and shadcn/ui with a dark theme
+suited to extended research sessions.
+
+\subsection{Landing Page (Guest View)}
+
+The landing page presents \leaklens{} to unauthenticated visitors. It
+displays the platform's purpose, key features (billions of records, full
+credentials, 7 search types, enrichment), and call-to-action buttons for
+signing in or creating an account.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{landing-guest.png}
+\caption{Landing page of \leaklens{} (\url{https://leakslens.vercel.app}).}
+\label{fig:landing}
+\end{figure}
+
+\subsection{Registration and Login}
+
+Account creation requires email, full name, password, and a valid invite code
+when the registration gate is active. The login form accepts email and password;
+after successful authentication, the user is redirected to the search
+interface. \figref{fig:register} and \figref{fig:login} show both forms on
+the same page layout.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}[t]{0.47\linewidth}
+  \centering
+  \includegraphics[width=\linewidth,keepaspectratio]{register.png}\\[4pt]
+  \captionof{figure}{Registration form with invite-code gate.}
+  \label{fig:register}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.47\linewidth}
+  \centering
+  \includegraphics[width=\linewidth,keepaspectratio]{login.png}\\[4pt]
+  \captionof{figure}{Login form.}
+  \label{fig:login}
+\end{minipage}
+\end{figure}
+
+\subsection{Home Page (Authenticated View)}
+
+Once logged in, the user sees a streamlined home page with the search bar
+prominently displayed. Seven search-type chips (Email, Username, IP,
+Password, Name, Hash, Domain) allow quick type selection, and a wildcard
+toggle enables pattern matching.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{home-auth.png}
+\caption{Home page with search interface (authenticated user).}
+\label{fig:home}
+\end{figure}
+
+\subsection{Search Results}
+
+Search results are displayed as cards grouped by source database. Each card
+shows the database name, severity badge (critical/high/medium/low), and
+credential fields. Sensitive fields (passwords, hashes) are blurred by
+default and can be revealed with a click. A copy button is available for each
+field.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{results.png}
+\caption{Search results page showing leak records with severity badges.}
+\label{fig:results}
+\end{figure}
+
+\subsection{Enrichment Panel}
+
+When searching by email or domain, supplementary intelligence is displayed
+in a dedicated enrichment panel: subdomain discovery, WHOIS data, and email
+reputation scores.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{enrichment.png}
+\caption{Enrichment panel showing supplementary intelligence.}
+\label{fig:enrichment}
+\end{figure}
+
+\subsection{Search History}
+
+The history page lists the user's past searches with the query, type,
+result count, and timestamp. A ``Search again'' button allows re-running
+any past query.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{search-history.png}
+\caption{Search history page.}
+\label{fig:history}
+\end{figure}
+
+\FloatBarrier
+
+% ----------------------------------------------------------------------------
+\section{Docker Deployment}
+\label{sec:docker-deploy}
+% ----------------------------------------------------------------------------
+
+The backend is deployed on the VPS using Docker Compose. The following
+screenshots document the build process, running containers, and API health
+verification.
+
+\subsection{Docker Compose Build}
+
+Production deployment is started with \texttt{docker compose up -d --build}.
+The multi-stage Alpine image compiles Python dependencies in a builder stage,
+ships a minimal runtime, and starts the FastAPI and PostgreSQL services with
+health-check dependencies.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{docker-build.png}
+\caption{Successful \texttt{docker compose up -d --build} on the VPS.}
+\label{fig:docker-build}
+\end{figure}
+
+\subsection{Container Status}
+
+Once the stack is running, both containers report a healthy state. PostgreSQL
+remains on the internal Docker network; only the FastAPI service is exposed
+to the host on port~8500.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{docker-ps.png}
+\caption{\texttt{docker ps} output showing \texttt{leaklens-backend-1} and
+\texttt{leaklens-postgres-1} in healthy state.}
+\label{fig:docker-ps}
+\end{figure}
+
+\subsection{Health Check}
+
+The backend exposes a lightweight \texttt{/health} endpoint used by Docker
+health checks and for manual verification after deployment.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{health-check.png}
+\caption{Health check response confirming the API is operational.}
+\label{fig:health-check}
+\end{figure}
+
+\FloatBarrier
+
+% ----------------------------------------------------------------------------
+\section{Search Demonstration}
+\label{sec:search-demo}
+% ----------------------------------------------------------------------------
+
+This section presents two live queries executed against the production
+instance. Results illustrate how \leaklens{} surfaces breached credentials and
+organizational exposure from Snusbase and enrichment sources.
+
+\subsection{Password Search}
+
+To demonstrate password-type lookup, the query \texttt{'qwerty@'} was submitted. The platform returned
+\textbf{748 records} spanning multiple source databases. Each result card
+lists the associated email or username, the exposed password field (blurred by
+default in the UI), the originating breach compilation, and a severity badge
+--- most entries are rated \emph{critical} because plaintext credentials are
+present. \figref{fig:password-search} shows a representative subset of these
+results; the full result set confirms how widely reused weak passwords such as
+\texttt{qwerty} propagate across unrelated services.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{password-search.png}
+\caption{Password search for \texttt{qwerty}: 748 leaked credential records
+across multiple breach databases.}
+\label{fig:password-search}
+\end{figure}
+
+\subsection{Domain Search}
+
+A domain search for \texttt{'itbs.tn'} was run to assess exposure tied to an
+educational institution. The Search Engine  returned
+\textbf{16 breached student records} linked to email addresses under that
+domain, together with subdomain and WHOIS context in the enrichment panel.
+This type of query helps defenders identify whether institutional accounts
+appear in public leak compilations and prioritize password resets or MFA
+enforcement for affected users. \figref{fig:search-domain} captures the
+domain results and  returned .
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{domain-search.png}
+\caption{Domain search for \texttt{itbs.tn}: 16 breached student records with
+subdomain and WHOIS enrichment.}
+\label{fig:search-domain}
+\end{figure}
+
+\subsection{Name Search}
+
+An individual or employee can search by full name to discover where their
+personal data has appeared in breach compilations. \figref{fig:name-search}
+shows a name search performed with the author's own name: the platform returned
+matching records exposing an associated email address and password in plaintext,
+illustrating how quickly personal exposure can be identified.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth,keepaspectratio]{name-search.png}
+\caption{Name search revealing leaked email and password associated with the
+queried identity.}
+\label{fig:name-search}
+\end{figure}
+
+\FloatBarrier
+
+% ----------------------------------------------------------------------------
+\section*{Conclusion}
+
+This chapter demonstrated the operational \leaklens{} platform through its
+user interface, Docker deployment on the VPS, and three live breach searches.
+The password query for \texttt{qwerty@} returned 748 credential records across
+multiple databases; the domain query for \texttt{itbs.tn} exposed 16 student
+accounts; and a name search confirmed personal exposure by surfacing a linked
+email and plaintext password. Together, these results confirm that the
+end-to-end search pipeline described in earlier chapters works as designed in
+production.

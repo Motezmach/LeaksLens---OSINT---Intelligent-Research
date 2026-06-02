@@ -1,0 +1,460 @@
+% ============================================================================
+% Chapter III -- Architecture Design and Security
+% ============================================================================
+\chapter{Architecture Design and Security}
+\label{chap:architecture}
+
+\section*{Introduction}
+
+This chapter presents the system architecture and security design in detail,
+from global topology down to individual controls.
+
+% ----------------------------------------------------------------------------
+\section{Global System Architecture}
+\label{sec:global-arch}
+% ----------------------------------------------------------------------------
+
+The system follows a split-deployment model with clear separation between
+frontend delivery and backend processing. \figref{fig:global-arch} summarizes
+the production topology end to end: the \textbf{Browser} connects to the
+\textbf{Frontend Layer (Vercel)} over HTTPS, where \textbf{Next.js~15} serves
+the UI and proxies API traffic server-side; requests reach the \textbf{VPS},
+where \textbf{Nginx Proxy Manager} terminates inbound connections and forwards
+them into a \textbf{Docker Compose} stack running \textbf{FastAPI} and
+\textbf{PostgreSQL~16}; the backend then queries \textbf{Snusbase} and free
+\textbf{Enrichment APIs} (LeakCheck, EmailRep.io, Cert Spotter) over HTTPS.
+No breach credentials are persisted locally---only user accounts and search
+metadata are stored in PostgreSQL.
+
+\begin{figure}[H]
+\centering
+\includegraphics[
+  width=\linewidth,
+  keepaspectratio
+]{architecture-diag.png}
+\caption{Global system architecture.}
+\label{fig:global-arch}
+\end{figure}
+
+\textbf{Key architectural decisions:}
+
+\begin{enumerate}[nosep]
+  \item \textbf{Split deployment:} The frontend is hosted on Vercel (automatic
+        HTTPS, global CDN), while the backend runs on a dedicated VPS. This
+        separates static asset delivery from API processing and database I/O.
+  \item \textbf{Rewrite proxy pattern:} In production, Next.js rewrites all
+        \texttt{/api/v1/*} requests to the backend server-side. The browser
+        never makes a direct cross-origin HTTP call, eliminating mixed-content
+        issues when the API is exposed on plain HTTP behind the VPS.
+  \item \textbf{Docker containerization:} The VPS backend is orchestrated with
+        \texttt{docker-compose.yml}: a \textbf{PostgreSQL} container on an
+        internal bridge network and a \textbf{FastAPI} container built from a
+        multi-stage Alpine Dockerfile (non-root user, health checks, CPU/memory
+        limits, \texttt{no-new-privileges}). The database is not reachable from
+        the public internet.
+  \item \textbf{Nginx Proxy Manager:} On the VPS, Nginx Proxy Manager sits in
+        front of the Docker stack as the reverse proxy entry point. It routes
+        incoming API traffic to the backend container, supports TLS termination
+        when a custom subdomain is configured, and coexists with other projects
+        on the same host through hostname-based routing.
+  \item \textbf{Stateless backend:} FastAPI stores no server-side sessions.
+        Authentication state is carried entirely in JWT access and refresh
+        tokens, which simplifies scaling and container restarts.
+  \item \textbf{External data sources:} Breach records are fetched in real
+        time from Snusbase and enrichment APIs; only search audit metadata
+        (query, type, result count, timestamp) is written to PostgreSQL.
+\end{enumerate}
+
+% ----------------------------------------------------------------------------
+\section{Backend API Design}
+\label{sec:api-design}
+% ----------------------------------------------------------------------------
+
+The backend exposes a RESTful API under the \texttt{/api/v1} prefix. All
+endpoints return JSON and follow consistent error formats.
+
+\begin{table}[ht]
+\centering
+\caption{REST API endpoints.}
+\label{tab:endpoints}
+\small
+\begin{tabularx}{\textwidth}{@{} l l l X @{}}
+\toprule
+\textbf{Method} & \textbf{Endpoint} & \textbf{Auth} & \textbf{Description} \\
+\midrule
+POST & \texttt{/auth/register} & None &
+  Create account (email, password, invite code) \\
+POST & \texttt{/auth/login} & None &
+  Authenticate; returns access + refresh tokens \\
+POST & \texttt{/auth/refresh} & None &
+  Exchange refresh token for new access token \\
+GET  & \texttt{/auth/me} & Bearer &
+  Return current user profile \\
+POST & \texttt{/search} & Analyst+ &
+  Search leaked databases (7 types + wildcard) \\
+GET  & \texttt{/history} & Bearer &
+  Return user's last 200 searches \\
+GET  & \texttt{/health} & None &
+  Health check (returns \texttt{\{status: ok\}}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Each protected endpoint uses FastAPI's dependency injection system. The
+\texttt{CurrentUser} dependency extracts and validates the JWT from the
+\texttt{Authorization} header. The \texttt{SearchUser} dependency
+additionally enforces role requirements via \texttt{require\_role(ANALYST,
+ADMIN)}.
+
+% ----------------------------------------------------------------------------
+\section{Search Engine Pipeline}
+\label{sec:search-pipeline}
+% ----------------------------------------------------------------------------
+
+The search pipeline orchestrates validation, API calls, enrichment, and
+result aggregation concurrently. \figref{fig:search-pipeline} shows how a
+query flows from the API layer through the Search Engine to Snusbase and
+supplementary API Services before results are scored, deduplicated, and
+returned.
+
+\begin{figure}[H]
+\centering
+\includegraphics[
+  width=\linewidth,
+  keepaspectratio
+]{search-diag.png}
+\caption{Search engine pipeline.}
+\label{fig:search-pipeline}
+\end{figure}
+
+\subsection{Input Validation}
+
+The \texttt{validators} module enforces type-specific rules:
+
+\begin{itemize}[nosep]
+  \item \textbf{Email:} Must match a standard email regex.
+  \item \textbf{Domain:} Must be a valid domain extracted via
+        \texttt{tldextract}.
+  \item \textbf{IP:} Validated against IPv4/IPv6 format.
+  \item \textbf{Hash:} Must match MD5 (32~hex), SHA-1 (40~hex), or
+        SHA-256 (64~hex) patterns.
+  \item \textbf{Username/Name/Password:} Minimum 2 characters, maximum 320.
+  \item \textbf{Wildcard mode:} Relaxes all format checks but enforces a
+        3-character minimum to prevent overly broad queries.
+\end{itemize}
+
+\subsection{Concurrent Execution}
+
+The aggregator uses a \texttt{ThreadPoolExecutor} with 4 workers to run the
+Snusbase API call and enrichment calls in parallel. Since the Snusbase client
+(\texttt{httpx}) uses synchronous HTTP, \texttt{asyncio.to\_thread} is not
+needed---the executor offloads blocking I/O from the event loop naturally.
+
+\subsection{Severity Scoring}
+
+Each leak record is assigned a severity level based on the fields present:
+
+\begin{itemize}[nosep]
+  \item \textbf{Critical:} Password in plaintext or cracked hash present.
+  \item \textbf{High:} Hash present (but no plaintext password).
+  \item \textbf{Medium:} Email and username exposed, but no credentials.
+  \item \textbf{Low:} Minimal exposure (e.g., only an email address).
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\section{Security Architecture}
+\label{sec:security}
+% ----------------------------------------------------------------------------
+
+This section details nine security layers forming a defense-in-depth strategy
+aligned with OWASP best practices~\cite{owasp-top10}.
+
+\subsection{Authentication: JWT Access and Refresh Tokens}
+
+Authentication uses a dual-token scheme:
+
+\begin{itemize}[nosep]
+  \item \textbf{Access token:} Short-lived (15~minutes), signed with
+        HS256 using a 256-bit secret. Contains the user ID and role in its
+        claims. Sent in the \texttt{Authorization: Bearer} header.
+  \item \textbf{Refresh token:} Longer-lived (7~days), used exclusively to
+        obtain a new access token. Transmitted in the request body, never
+        stored in cookies.
+\end{itemize}
+
+Password hashing uses \texttt{bcrypt} with 12 rounds (configurable via
+\texttt{BCRYPT\_ROUNDS}), producing a 60-character hash that includes the
+salt.
+
+\begin{lstlisting}[language=Python,caption={JWT token creation (simplified).}]
+def create_access_token(sub: str, extra_claims: dict) -> str:
+    payload = {
+        "sub": sub,
+        "type": "access",
+        "exp": datetime.utcnow()
+              + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        **extra_claims,  # includes {"role": "analyst"}
+    }
+    return jwt.encode(payload, settings.SECRET_KEY,
+                      algorithm=settings.ALGORITHM)
+\end{lstlisting}
+
+\subsection{Authorization: Role-Based Access Control (RBAC)}
+
+Access control is enforced at the API layer through FastAPI's dependency
+injection:
+
+\begin{lstlisting}[language=Python,caption={RBAC dependency injection.}]
+def require_role(*roles: UserRole):
+    def checker(user: User = Depends(get_current_active_user)):
+        if user.role not in roles:
+            raise HTTPException(403, "Insufficient permissions")
+        return user
+    return checker
+
+# Applied to the search endpoint:
+SearchUser = Annotated[User,
+    Depends(require_role(UserRole.ANALYST, UserRole.ADMIN))]
+\end{lstlisting}
+
+Three roles are defined: \texttt{admin} (full access), \texttt{analyst}
+(search + history), and \texttt{viewer} (history only, no search).
+
+\subsection{Anti-Enumeration: Constant-Time Login}
+
+A common attack vector is \emph{timing-based user enumeration}: an attacker
+measures login response times to determine whether an email exists in the
+system (bcrypt verification takes measurable time; skipping it is fast).
+
+The system mitigates timing-based user enumeration by running a dummy bcrypt
+verification when the account is not found:
+
+\begin{lstlisting}[language=Python,caption={Constant-time login defense.}]
+_DUMMY_HASH = hash_password("dummy-password-for-constant-time")
+
+if user is None:
+    verify_password(form_data.password, _DUMMY_HASH)  # same timing
+    raise auth_error
+\end{lstlisting}
+
+Combined with the generic error message ``Incorrect email or password,'' this
+makes it infeasible to distinguish between a non-existent account and a wrong
+password.
+
+\subsection{Registration Gate: Invite Code}
+
+To prevent unauthorized sign-ups, registration requires a matching invite
+code when \texttt{INVITE\_CODE} is configured:
+
+\begin{lstlisting}[language=Python,caption={Invite-code verification with constant-time comparison.}]
+if settings.INVITE_CODE:
+    if not hmac.compare_digest(provided, settings.INVITE_CODE):
+        raise HTTPException(403,
+            "A valid invite code is required to register.")
+\end{lstlisting}
+
+The use of \texttt{hmac.compare\_digest} prevents timing attacks on the
+invite code itself. The registration error for duplicate emails is also
+generic (``Unable to register with the provided details'') to avoid
+confirming which emails are already registered.
+
+\subsection{Rate Limiting}
+
+Per-endpoint rate limiting is implemented using \texttt{slowapi} (a
+Starlette/FastAPI wrapper around \texttt{limits}):
+
+\begin{table}[ht]
+\centering
+\caption{Rate limits per endpoint category.}
+\label{tab:rate-limits}
+\begin{tabular}{@{} l c @{}}
+\toprule
+\textbf{Endpoint category} & \textbf{Limit (per minute)} \\
+\midrule
+Authentication (\texttt{/auth/*}) & 5 \\
+Search (\texttt{/search})         & 20 \\
+General API                       & 60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Rate limits are keyed by client IP. When exceeded, the API returns
+\texttt{429 Too Many Requests} with a \texttt{Retry-After} header.
+
+\subsection{HTTP Security Headers}
+
+The backend injects strict security headers on every response via a custom
+middleware (\texttt{SecurityHeadersMiddleware}):
+
+\begin{table}[ht]
+\centering
+\caption{HTTP security headers.}
+\label{tab:headers}
+\small
+\begin{tabularx}{\textwidth}{@{} l X @{}}
+\toprule
+\textbf{Header} & \textbf{Value and Purpose} \\
+\midrule
+\texttt{X-Content-Type-Options} &
+  \texttt{nosniff} --- prevents MIME-type sniffing attacks \\
+\texttt{X-Frame-Options} &
+  \texttt{DENY} --- blocks clickjacking via iframes \\
+\texttt{Referrer-Policy} &
+  \texttt{strict-origin-when-cross-origin} --- limits referrer leakage \\
+\texttt{Permissions-Policy} &
+  Disables geolocation, microphone, camera, payment, USB \\
+\texttt{Cross-Origin-Opener-Policy} &
+  \texttt{same-origin} --- isolates browsing context \\
+\texttt{Strict-Transport-Security} &
+  \texttt{max-age=63072000; includeSubDomains; preload} (production only) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The frontend additionally sets a \textbf{Content Security Policy (CSP)} via
+\texttt{next.config.js}, restricting script sources, connection targets, and
+frame ancestors.
+
+\subsection{CORS: Strict Origin Allowlist}
+
+Cross-Origin Resource Sharing is configured with an explicit allowlist of
+origins (set via the \texttt{CORS\_ORIGINS} environment variable). In
+production, only the Vercel frontend domain is permitted. Credentials
+(\texttt{allow\_credentials=True}) and specific HTTP methods are explicitly
+listed. Wildcard origins (\texttt{*}) are never used.
+
+\subsection{Input Validation}
+
+All user input passes through Pydantic models (FastAPI's built-in validation
+layer) before reaching business logic:
+
+\begin{itemize}[nosep]
+  \item Email fields validated by \texttt{pydantic[email-validator]}.
+  \item Password: minimum 12 characters, strength-checked (uppercase,
+        lowercase, digit, special character).
+  \item Search terms: type-specific regex, maximum 25 terms per query,
+        320-character limit per term.
+  \item Invite code: maximum 128 characters.
+\end{itemize}
+
+\subsection{Docker Security}
+
+The containerization strategy follows Docker security best practices:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Alpine base image:} Minimal attack surface (5~MB base vs.
+        120~MB for Debian).
+  \item \textbf{Multi-stage build:} Build dependencies (compilers, headers)
+        are excluded from the production image.
+  \item \textbf{Non-root execution:} The application runs as user
+        \texttt{leaklens} (UID~1000), never as root.
+  \item \textbf{\texttt{no-new-privileges}:} The Docker security option
+        prevents privilege escalation inside the container.
+  \item \textbf{\texttt{forwarded-allow-ips}:} Uvicorn trusts
+        \texttt{X-Forwarded-*} headers only from the Docker bridge network
+        (\texttt{127.0.0.1,172.16.0.0/12}), preventing IP spoofing from
+        external clients.
+  \item \textbf{\texttt{.dockerignore}:} Excludes \texttt{.env}, tests, and
+        Python cache from the build context.
+  \item \textbf{Resource limits:} Docker Compose enforces CPU and memory
+        limits (1.5~CPU / 512~MB for backend, 1.0~CPU / 512~MB for
+        PostgreSQL).
+  \item \textbf{Trivy scanning:} A \texttt{trivy-scan.sh} script builds the
+        image and scans it for known vulnerabilities before deployment.
+\end{enumerate}
+
+\begin{lstlisting}[language={},caption={Dockerfile excerpt --- non-root user and restricted forwarding.},label={lst:dockerfile}]
+# Runtime stage
+FROM python:3.12-alpine AS runtime
+RUN adduser -D -u 1000 leaklens
+COPY --from=builder /install /usr/local
+COPY ./app /home/leaklens/app
+USER leaklens
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips=127.0.0.1,172.16.0.0/12"]
+\end{lstlisting}
+
+% ----------------------------------------------------------------------------
+\section{Containerization with Docker}
+\label{sec:docker}
+% ----------------------------------------------------------------------------
+
+The backend Dockerfile uses a two-stage build strategy:
+
+\begin{figure}[ht]
+\centering
+\tikzfig{%
+\begin{tikzpicture}[
+  stage/.style={draw,rounded corners,minimum width=3.4cm,minimum height=1.1cm,
+    align=center,font=\footnotesize},
+  arrow/.style={-{Stealth[length=2.5mm]},thick},
+]
+  \node[stage,fill=blue!10] (builder) {\textbf{Builder}\\python:3.12-alpine\\pip install};
+  \node[stage,fill=green!10,right=2cm of builder] (runtime)
+    {\textbf{Runtime}\\python:3.12-alpine\\non-root user};
+  \draw[arrow] (builder) -- node[above,font=\tiny]{COPY} (runtime);
+\end{tikzpicture}%
+}
+\caption{Docker multi-stage build.}
+\label{fig:docker-stages}
+\end{figure}
+
+The builder stage installs all Python dependencies (including C extensions
+like \texttt{bcrypt} and \texttt{asyncpg}) with their build-time headers. The
+runtime stage copies only the compiled packages, resulting in a lean
+production image.
+
+% ----------------------------------------------------------------------------
+\section{Deployment Architecture}
+\label{sec:deployment}
+% ----------------------------------------------------------------------------
+
+\begin{figure}[ht]
+\centering
+\tikzfig{%
+\begin{tikzpicture}[
+  node distance=0.9cm and 1.5cm,
+  box/.style={draw,rounded corners,minimum width=2.6cm,minimum height=0.85cm,
+    align=center,font=\footnotesize},
+  arrow/.style={-{Stealth[length=2.5mm]},thick},
+]
+  \node[box,fill=gray!10] (github) {GitHub};
+  \node[box,fill=green!10,below left=1.2cm and 0.2cm of github] (vercel)
+    {Vercel};
+  \node[box,fill=orange!10,below right=1.2cm and 0.2cm of github] (vps)
+    {VPS\\Docker};
+  \node[box,fill=purple!10,below=0.8cm of vps] (npm) {Nginx PM};
+  \draw[arrow] (github) -- (vercel);
+  \draw[arrow] (github) -- (vps);
+  \draw[arrow] (npm) -- (vps);
+\end{tikzpicture}%
+}
+\caption{Deployment workflow.}
+\label{fig:deployment}
+\end{figure}
+
+\begin{itemize}[nosep]
+  \item \textbf{Frontend (Vercel):} Every push to \texttt{main} triggers an
+        automatic build and deployment. Vercel provides HTTPS, a global CDN,
+        and preview deployments for pull requests.
+  \item \textbf{Backend (VPS):} The operator SSHs into the VPS, pulls the
+        latest code, and runs \texttt{docker compose up -d -{}-build}. The
+        PostgreSQL data is persisted on a named Docker volume.
+  \item \textbf{Nginx Proxy Manager:} Already present on the VPS for other
+        projects, it routes traffic by subdomain with automatic Let's Encrypt
+        certificates. The VPS can host multiple projects simultaneously, each
+        with its own subdomain.
+  \item \textbf{Environment variables:} Production secrets (\texttt{SECRET\_KEY},
+        \texttt{POSTGRES\_PASSWORD}, \texttt{SNUSBASE\_API\_KEY},
+        \texttt{INVITE\_CODE}) are stored in a \texttt{.env} file on the VPS,
+        never committed to Git. A \texttt{.env.example} template is provided
+        in the repository.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\section*{Conclusion}
+
+This chapter presented the system architecture and its nine security layers.
+The search pipeline handles concurrent API orchestration with input validation
+and severity scoring. The next chapter shows the concrete realization through
+screenshots and production metrics.

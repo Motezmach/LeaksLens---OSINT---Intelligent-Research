@@ -1,0 +1,412 @@
+% ============================================================================
+% Chapter I -- Preliminary Study
+% ============================================================================
+
+% ----------------------------------------------------------------------------
+% Introduction G\'en\'erale (unnumbered, before Chapter I)
+% ----------------------------------------------------------------------------
+\chapter*{General Introduction}
+\addcontentsline{toc}{chapter}{General Introduction}
+\markboth{General Introduction}{}
+
+The digital era has brought unprecedented connectivity---and with it, an
+equally unprecedented exposure of sensitive data. According to industry
+estimates, over 26~billion records were exposed in data breaches during 2023
+alone, and the trend has only accelerated since~\cite{ibm-breach-report}. Every
+month, new breach compilations, stealer logs, and combolists surface on
+darknet forums, paste sites, and Telegram channels, making personally
+identifiable information (PII) and credentials available to threat actors at
+an industrial scale.
+
+In response, a discipline known as \textbf{Open-Source Intelligence (OSINT)}
+has emerged as a critical capability for cybersecurity defenders. OSINT
+platforms allow analysts to search leaked data proactively---not to exploit it,
+but to assess exposure, notify affected parties, and harden defenses before
+attackers strike. Commercial platforms such as IntelligenceX, DeHashed, and
+Snusbase provide this capability, but they are often expensive, opaque in
+their architecture, and inaccessible to students and small security teams.
+
+It is in this context that \leaklens{} was conceived: an OSINT intelligence
+platform that enables authorized security researchers to search breached
+databases by email, username, IP address, password, name, hash, or domain.
+Results include credential exposure records enriched with supplementary
+intelligence from public APIs. The project also demonstrates defensive
+software engineering---hardening the application itself against common web
+attacks.
+
+This report documents the full engineering cycle, with emphasis on:
+
+\begin{itemize}[nosep]
+  \item The cybersecurity context and need for accessible OSINT tooling;
+  \item Functional and non-functional requirements;
+  \item Security-oriented architecture (JWT, RBAC, rate limiting, CSP);
+  \item Production realization on Vercel and a VPS.
+\end{itemize}
+
+The report is organized in four chapters. \chapref{chap:preliminary} presents
+the preliminary study, analyzes existing solutions, and justifies the choices
+made. \chapref{chap:requirements} details the functional requirements and
+technology stack. \chapref{chap:architecture}, the core of this report,
+describes the security-oriented architecture design.
+Finally, \chapref{chap:implementation} demonstrates the concrete realization
+through screenshots and production metrics.
+
+\clearpage
+
+% ============================================================================
+\chapter{Preliminary Study}
+\label{chap:preliminary}
+% ============================================================================
+
+\section*{Introduction}
+
+Before designing any technical solution, it is essential to understand the
+context in which it operates, to analyze the tools already available on the
+market, and to identify the gaps that the project aims to fill. This first
+chapter establishes the foundations of the project: its context, problem
+statement, and value for cybersecurity research.
+
+% ----------------------------------------------------------------------------
+\section{General Context}
+\label{sec:context}
+% ----------------------------------------------------------------------------
+
+\subsection{The Cybersecurity Landscape (2024--2026)}
+
+Between 2024 and 2026, the volume and \emph{reuse} of leaked breach data
+became a defining feature of the threat landscape. Incidents no longer end
+when a company publishes a breach notification---the stolen records live on
+independently, copied into combolists, stealer-log archives, and searchable
+databases traded on criminal forums, Telegram channels, and paste sites.
+
+Several trends illustrate the scale of the problem:
+
+\begin{itemize}[nosep]
+  \item \textbf{2024 --- aggregation at industrial scale:} The ``Mother of All
+        Breaches'' (MOAB) consolidated an estimated 26~billion records from
+        dozens of prior incidents into a single searchable corpus, proving
+        that breach data is permanently recycled rather than
+        contained~\cite{moab}.
+  \item \textbf{2025 --- stealer logs as a primary source:} Infostealer
+        malware families (RedLine, Raccoon, Vidar, Lumma) harvest
+        browser-saved credentials, session cookies, and autofill data from
+        infected machines. These \emph{stealer logs} are sold in bulk and
+        often contain live session tokens, making them more dangerous than
+        static password dumps from older database breaches.
+  \item \textbf{2026 --- sustained corporate and public-sector impact:}
+        Healthcare providers, financial institutions, and government agencies
+        continue to report large-scale exposures. IBM estimates the global
+        average cost of a data breach at USD~4.88~million in
+        2024~\cite{ibm-breach-report}, driven largely by post-breach
+        remediation, regulatory fines, and customer churn.
+\end{itemize}
+
+\paragraph{What breach compilations contain.}
+A typical leak dataset may include email addresses, usernames, plaintext or
+reused passwords, password hashes (MD5, SHA-1, bcrypt), IP addresses, phone
+numbers, physical addresses, and internal corporate identifiers. NIST
+classifies much of this material as personally identifiable information
+(PII)~\cite{nist-breach}. Once published, a single credential pair can appear
+in dozens of derivative compilations within weeks.
+
+\paragraph{How attackers exploit leaked data.}
+Threat actors treat breach data as reusable ammunition rather than a one-time
+event. Common abuse patterns include:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Credential stuffing:} Automated bots test email/password
+        pairs harvested from one breach against banking portals, SaaS
+        platforms, and corporate VPN gateways. Because users frequently reuse
+        passwords, a leak from a low-value forum can unlock high-value
+        corporate accounts.
+  \item \textbf{Account takeover (ATO):} Valid credentials enable direct
+        access to email, cloud storage, and social media. Attackers pivot
+        from ATO to password-reset flows on linked services, expanding the
+        blast radius without additional malware.
+  \item \textbf{Targeted phishing and social engineering:} Knowing that a
+        victim's email appeared in a specific breach (e.g., a healthcare or
+        payroll provider) allows attackers to craft convincing lures
+        referencing real incident details, dramatically increasing click and
+        compromise rates.
+  \item \textbf{Initial access and ransomware:} Breach-derived credentials
+        are sold on initial-access broker markets. Ransomware groups purchase
+        valid VPN or remote-desktop logins to bypass perimeter defenses
+        entirely.
+  \item \textbf{Identity fraud and financial crime:} Combined PII fields
+        (name, address, phone, date of birth) support synthetic identity
+        creation, SIM-swap preparation, and fraudulent loan or tax
+        applications.
+\end{enumerate}
+
+\paragraph{Why the danger persists.}
+Even when organizations rotate passwords after an incident, historical breach
+records remain valuable: weak hashes can be cracked offline, reused passwords
+can be tested indefinitely, and stealer logs may capture credentials \emph{after}
+a rotation. Defenders therefore need continuous visibility into whether their
+assets---employee emails, corporate domains, public IP ranges---appear in
+newly surfaced leak compilations, not merely whether a breach was announced
+years ago.
+
+\subsection{Problem Statement}
+\label{sec:problematic}
+
+The core problem is asymmetric: attackers can acquire and weaponize breach
+data cheaply and at scale, while defenders often lack timely, actionable
+visibility into the same datasets. A security team may learn that \emph{a}
+breach occurred, yet remain unable to answer precise questions that determine
+real risk:
+
+\begin{itemize}[nosep]
+  \item Do our employees' corporate email addresses appear with plaintext
+        passwords in stealer logs or combolists circulating this month?
+  \item Has a contractor's reused password from an unrelated consumer breach
+        exposed our VPN or Microsoft~365 tenant to credential stuffing?
+  \item Does a newly registered phishing domain overlap with subdomains or
+        WHOIS data tied to our organization's prior exposures?
+\end{itemize}
+
+Without answers, organizations operate blind during the critical window between
+data exfiltration and public disclosure---often months or years---during which
+threat actors actively monetize the stolen records.
+
+\paragraph{Defender use cases.}
+Proactive breach-data search supports three operational needs:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Exposure assessment:} Map which identities, domains, and IP
+        addresses within an organization's scope appear in known leak
+        compilations, prioritizing remediation (forced resets, MFA rollout,
+        session revocation) before attackers exploit the overlap.
+  \item \textbf{Incident response:} During or after a suspected breach,
+        rapidly determine whether specific assets, hashes, or internal
+        identifiers have surfaced in external datasets, shortening
+        investigation timelines.
+  \item \textbf{Threat intelligence enrichment:} Correlate a suspicious email,
+        domain, or IP with historical leak context to assess whether an
+        observed login attempt likely originates from a recycled credential
+        rather than a novel attack vector.
+\end{enumerate}
+
+\paragraph{Gap in existing tooling.}
+Current market offerings leave significant blind spots:
+
+\begin{itemize}[nosep]
+  \item \textbf{Notification without substance:} Services such as Have I Been
+        Pwned~\cite{hibp} confirm that an email appeared in a named breach
+        but withhold the underlying credential data and enrichment context
+        needed for thorough triage.
+  \item \textbf{Prohibitive cost:} Professional engines like
+        IntelligenceX~\cite{intelx} and DeHashed~\cite{dehashed} return
+        full records but charge subscription fees that exclude students,
+        independent researchers, and small security teams.
+  \item \textbf{Opaque engineering:} Commercial platforms do not expose their
+        aggregation, validation, or access-control design, limiting their
+        value as reference implementations for academic or audit purposes.
+  \item \textbf{No integrated, self-hosted option:} Few tools combine
+        multi-type breach search, supplementary OSINT enrichment, role-based
+        access control, and containerized deployment in a single transparent
+        stack.
+\end{itemize}
+
+\leaklens{} targets this gap directly: an OSINT platform that lets
+authorized analysts query real breach records across seven search types,
+enriched with public API data, while demonstrating how such a sensitive
+capability should be engineered---invite-gated registration, JWT-based
+authorization, rate limiting, and no local storage of raw credentials beyond
+audit metadata.
+
+% ----------------------------------------------------------------------------
+\section{Study of Existing Solutions}
+\label{sec:existing}
+% ----------------------------------------------------------------------------
+
+\subsection{Solution~1: Have I Been Pwned (HIBP)}
+
+Have I Been Pwned, created by security researcher Troy Hunt, is one of the
+most widely used breach-notification services in the world. Users enter an
+email address and HIBP reports which known breaches include that
+address~\cite{hibp}.
+
+\textbf{Strengths:}
+\begin{itemize}[nosep]
+  \item Free and publicly accessible;
+  \item Covers over 700 breaches and 13+ billion accounts;
+  \item Offers a \texttt{Pwned Passwords} API for password checking;
+  \item Respected and trusted in the security community.
+\end{itemize}
+
+\textbf{Limitations:}
+\begin{itemize}[nosep]
+  \item Only reveals breach \emph{names}---never actual credentials;
+  \item Search limited to email and phone; no username, IP, or domain search;
+  \item No enrichment (subdomains, WHOIS, reputation);
+  \item API is rate-limited and the paid tier is enterprise-priced.
+\end{itemize}
+
+\subsection{Solution~2: IntelligenceX (IntelX)}
+
+IntelligenceX is a professional OSINT search engine that indexes data from
+the darknet, paste sites, public records, and breach compilations. It
+supports searching by email, domain, IP, Bitcoin address, and
+more~\cite{intelx}.
+
+\textbf{Strengths:}
+\begin{itemize}[nosep]
+  \item Extremely powerful: searches darknet, Tor, I2P, paste sites;
+  \item Returns actual file contents and credential data;
+  \item Supports advanced search operators and historical data;
+  \item Professional-grade API with comprehensive documentation.
+\end{itemize}
+
+\textbf{Limitations:}
+\begin{itemize}[nosep]
+  \item Expensive: professional plans start at \$2,000+/year;
+  \item Free tier is heavily restricted (limited searches per day);
+  \item Closed-source, proprietary architecture;
+  \item Enterprise-focused; inaccessible for academic projects.
+\end{itemize}
+
+\subsection{Solution~3: DeHashed}
+
+DeHashed is a subscription-based breach search engine that allows users to
+search leaked databases by email, username, IP address, name, phone, and
+more~\cite{dehashed}.
+
+\textbf{Strengths:}
+\begin{itemize}[nosep]
+  \item Affordable entry point (\$5.49/month for basic plan);
+  \item Returns actual credentials (passwords, hashes);
+  \item API access included in paid plans;
+  \item Supports multiple search types (email, username, IP, name, phone).
+\end{itemize}
+
+\textbf{Limitations:}
+\begin{itemize}[nosep]
+  \item No free tier; requires subscription for any meaningful use;
+  \item No enrichment capabilities (WHOIS, subdomains, reputation);
+  \item No self-hosted deployment option;
+  \item No role-based access control or invite-gated registration.
+\end{itemize}
+
+% ----------------------------------------------------------------------------
+\section{Comparative Study}
+\label{sec:comparative}
+% ----------------------------------------------------------------------------
+
+\tabref{tab:comparison} compares the existing solutions with \leaklens{}
+across several key criteria.
+
+\begin{table}[ht]
+\centering
+\caption{Comparative table of OSINT breach-search platforms.}
+\label{tab:comparison}
+\small
+\begin{tabularx}{\textwidth}{@{} L{3.8cm} C{2cm} C{2cm} C{2cm} C{2cm} @{}}
+\toprule
+\textbf{Criterion} & \textbf{HIBP} & \textbf{IntelX} & \textbf{DeHashed}
+  & \textbf{LeakLens} \\
+\midrule
+Free access                 & \cmark & $\sim$ & \xmark & \cmark \\
+Credential data returned    & \xmark & \cmark & \cmark & \cmark \\
+Multiple search types       & \xmark & \cmark & \cmark & \cmark \\
+Wildcard search             & \xmark & \cmark & \cmark & \cmark \\
+Enrichment (WHOIS, subs.)   & \xmark & $\sim$ & \xmark & \cmark \\
+Self-hosted / Docker        & \xmark & \xmark & \xmark & \cmark \\
+RBAC \& invite-gated signup & \xmark & \xmark & \xmark & \cmark \\
+Security-hardened backend   & N/A    & N/A    & N/A    & \cmark \\
+Open architecture           & \xmark & \xmark & \xmark & \cmark \\
+Affordable for students     & \cmark & \xmark & $\sim$ & \cmark \\
+\bottomrule
+\end{tabularx}
+
+\vspace{4pt}
+\footnotesize \cmark\ = Yes \quad $\sim$ = Partial \quad \xmark\ = No
+\end{table}
+
+This analysis highlights that, unlike commercial solutions, the proposed
+system offers full control over the stack and security model---its main
+advantage for academic and professional use.
+
+% ----------------------------------------------------------------------------
+\section{Proposed Solution: LeakLens}
+\label{sec:proposed}
+% ----------------------------------------------------------------------------
+
+\subsection{Project Vision}
+
+\leaklens{} is an OSINT platform designed as a complete demonstrator of
+modern, security-first software engineering.
+
+The vision of \leaklens{} rests on three fundamental pillars:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Intelligence:} A real, functional search platform covering
+        seven search types across billions of breached records, enriched with
+        supplementary data from free public APIs.
+  \item \textbf{Security:} A defense-in-depth architecture implementing
+        industry best practices---JWT, RBAC, rate limiting, CSP, HSTS,
+        constant-time authentication, and Docker hardening.
+  \item \textbf{Simplicity:} A lean, containerized deployment that can be
+        reproduced on any VPS with Docker Compose, paired with a
+        Vercel-hosted frontend for zero-maintenance delivery.
+\end{enumerate}
+
+\subsection{Project Objectives}
+
+\begin{itemize}[nosep]
+  \item Develop a full-stack OSINT platform with Next.js (frontend) and
+        FastAPI (backend);
+  \item Integrate Snusbase as the primary leak-data engine, supplemented
+        by free enrichment APIs;
+  \item Implement comprehensive authentication and authorization (JWT,
+        RBAC, invite-code gating);
+  \item Harden the application against common web attacks (enumeration,
+        brute force, XSS, CSRF);
+  \item Containerize with Docker using Alpine multi-stage builds, non-root
+        execution, and vulnerability scanning;
+  \item Deploy in production on a VPS (backend) and Vercel (frontend) with
+        automatic TLS.
+\end{itemize}
+
+\subsection{High-Level Architecture}
+
+\figref{fig:high-level-arch} presents the high-level architecture. The
+frontend runs on Vercel; the backend and database run on a VPS inside Docker
+Compose. A Next.js rewrite proxy routes API calls server-side, avoiding
+mixed-content issues when the backend has no custom HTTPS domain.
+
+\begin{figure}[ht]
+\centering
+\tikzfig{%
+\begin{tikzpicture}[
+  node distance=1.1cm and 1.6cm,
+  box/.style={draw,rounded corners,minimum width=2.4cm,minimum height=0.95cm,
+    align=center,font=\footnotesize},
+  arrow/.style={-{Stealth[length=2.5mm]},thick},
+]
+  \node[box,fill=blue!10] (browser) {Browser};
+  \node[box,fill=green!10,right=of browser] (vercel)
+    {Vercel\\Next.js};
+  \node[box,fill=orange!10,right=of vercel] (vps)
+    {VPS\\FastAPI + PG};
+  \node[box,fill=red!10,right=of vps] (snusbase) {Snusbase};
+  \node[box,fill=yellow!10,below=0.6cm of snusbase] (freeapis)
+    {Enrichment APIs};
+
+  \draw[arrow] (browser) -- node[above,font=\tiny]{HTTPS} (vercel);
+  \draw[arrow] (vercel) -- node[above,font=\tiny]{Proxy} (vps);
+  \draw[arrow] (vps) -- node[above,font=\tiny]{HTTPS} (snusbase);
+  \draw[arrow] (vps) |- (freeapis);
+\end{tikzpicture}%
+}
+\caption{High-level system architecture.}
+\label{fig:high-level-arch}
+\end{figure}
+
+% ----------------------------------------------------------------------------
+\section*{Conclusion}
+
+This first chapter established the project context, analyzed existing
+OSINT platforms, and positioned the proposed solution as a practical,
+security-conscious alternative for students and small security teams. The
+next chapter details requirements and technology choices.

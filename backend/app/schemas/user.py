@@ -62,3 +62,7 @@ class Token(BaseModel):
 
 class TokenRefresh(BaseModel):
     refresh_token: str
+
+
+class DemoAccessRequest(BaseModel):
+    key: str = Field(min_length=16, max_length=256)

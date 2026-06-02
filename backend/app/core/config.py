@@ -30,12 +30,14 @@ class Settings(BaseSettings):
     # Leave empty to allow open registration (not recommended in production).
     INVITE_CODE: str = ""
 
+    # Jury / demo link: POST /auth/demo with matching key → JWT for DEMO_USER_EMAIL.
+    # Leave DEMO_ACCESS_KEY empty to disable. Set DEMO_EXPIRES_AT (ISO-8601 UTC) to auto-revoke.
+    DEMO_ACCESS_KEY: str = ""
+    DEMO_USER_EMAIL: str = "guest1@gmail.com"
+    DEMO_EXPIRES_AT: str = ""  # e.g. 2026-06-30T23:59:59+00:00
+
     # CORS
     CORS_ORIGINS: str = "http://localhost:3000"
-
-    # Extra hosts accepted by TrustedHostMiddleware (e.g. your VPS IP).
-    # Comma-separated. CORS_ORIGINS hosts are always trusted automatically.
-    EXTRA_TRUSTED_HOSTS: List[str] = []
 
     # Database
     POSTGRES_USER: str = "leaklens"

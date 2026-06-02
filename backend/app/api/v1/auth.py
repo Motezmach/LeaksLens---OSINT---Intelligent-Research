@@ -19,7 +19,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User, UserRole
-from app.schemas.user import Token, TokenRefresh, UserCreate, UserPublic
+from app.schemas.user import DemoAccessRequest, Token, TokenRefresh, UserCreate, UserPublic
 
 router = APIRouter()
 
@@ -159,3 +159,63 @@ async def refresh_token(request: Request, payload: TokenRefresh, db: DBSession) 
 @router.get("/me", response_model=UserPublic)
 async def me(current_user: CurrentUser) -> User:
     return current_user
+
+
+def _demo_is_active() -> bool:
+    if not settings.DEMO_ACCESS_KEY:
+        return False
+    if not settings.DEMO_EXPIRES_AT:
+        return True
+    try:
+        expires = datetime.fromisoformat(settings.DEMO_EXPIRES_AT.replace("Z", "+00:00"))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) < expires
+
+
+@router.post("/demo", response_model=Token)
+@limiter.limit("30/minute")
+async def demo_access(
+    request: Request,
+    payload: DemoAccessRequest,
+    db: DBSession,
+) -> Token:
+    """Exchange a time-limited demo key for JWT tokens (jury / presentation access)."""
+    if not _demo_is_active():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Demo access is not available",
+        )
+
+    if not hmac.compare_digest(payload.key, settings.DEMO_ACCESS_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid demo key",
+        )
+
+    email = settings.DEMO_USER_EMAIL.lower().strip()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Demo account is not configured",
+        )
+    if user.role not in (UserRole.ANALYST, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo account cannot run searches",
+        )
+
+    user.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    access = create_access_token(str(user.id), extra_claims={"role": user.role.value})
+    refresh = create_refresh_token(str(user.id))
+    return Token(
+        access_token=access,
+        refresh_token=refresh,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )

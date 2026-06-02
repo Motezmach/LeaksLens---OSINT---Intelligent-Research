@@ -1,0 +1,219 @@
+% ============================================================================
+% Front matter
+% ============================================================================
+
+% ----------------------------------------------------------------------------
+% Cover page
+% ----------------------------------------------------------------------------
+\begin{titlepage}
+\thispagestyle{empty}
+\pagecolor{white}
+
+\begin{tikzpicture}[remember picture,overlay]
+  % Thin red vertical accent (left margin)
+  \draw[CoverRed,line width=1.2pt]
+    ([xshift=1.6cm]current page.north west) --
+    ([xshift=1.6cm]current page.south west);
+\end{tikzpicture}
+
+% ---- Header ----------------------------------------------------------------
+\noindent
+\begin{minipage}[t]{0.42\textwidth}
+  \vspace{0pt}
+  \iteamlogo
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.52\textwidth}
+  \vspace{0pt}
+  \raggedleft
+  \setlength{\fboxsep}{6pt}
+  \fbox{%
+    \parbox[c][1.1cm][c]{0.94\linewidth}{%
+      \centering\small\bfseries
+      RAPPORT DE PROJET DE FIN D'ANN\'EES%
+    }%
+  }\\[6pt]
+  {\scriptsize Département Génie Informatique --- Cybersecurity}
+\end{minipage}
+
+\vspace{0.55cm}
+\noindent{\color{CoverRed}\rule{\textwidth}{0.8pt}}
+
+\vspace{1.4cm}
+
+% ---- Main title block ------------------------------------------------------
+\noindent\hspace{1.15cm}%
+\begin{minipage}[t]{0.88\textwidth}
+  {\fontsize{46}{50}\selectfont\bfseries\rmfamily \leaklens{}}\\[0.55cm]
+  {\Large\color{CoverRed}\bfseries
+    OSINT Intelligence Platform\\[0.12cm]
+    for Leaked Data Research}\\[0.45cm]
+  {\normalsize
+    Full-stack breach search deployed on Vercel and VPS
+    (FastAPI, Next.js, PostgreSQL, Snusbase)}\\[1.4cm]
+  \setlength{\fboxsep}{8pt}
+  \fbox{%
+    \parbox{0.72\textwidth}{%
+      \centering
+      Spécialité~: \textbf{Cybersecurity}%
+    }%
+  }
+\end{minipage}
+
+\vfill
+
+% ---- Academic year (left) + author block (right) -----------------------------
+\noindent
+\begin{minipage}[b]{0.28\textwidth}
+  \hspace{1.15cm}
+  {\scriptsize Année Universitaire}\\[2pt]
+  {\Large\bfseries 2025 / 2026}
+\end{minipage}%
+\hfill
+\begin{minipage}[b]{0.68\textwidth}
+  \raggedleft
+  \renewcommand{\arraystretch}{1.35}
+  \begin{tabular}{@{} >{\raggedright\arraybackslash}p{0.31\linewidth}
+                     >{\raggedright\arraybackslash}p{0.34\linewidth}
+                     >{\raggedright\arraybackslash}p{0.28\linewidth} @{}}
+    \textbf{Réalisé par~:} &
+    \textbf{Encadré par~:} &
+    \textbf{Soutenu en~:} \\[2pt]
+    Motez Machghoul &
+    Mr Raihane Modhaffer &
+    Juin 2026 \\
+  \end{tabular}
+\end{minipage}
+
+\vspace*{1.6cm}
+\end{titlepage}
+\nopagecolor
+
+% ----------------------------------------------------------------------------
+% Dedication
+% ----------------------------------------------------------------------------
+\clearpage
+\thispagestyle{empty}
+\vspace*{2.5cm}
+\begin{center}
+  {\LARGE\bfseries Dedication}
+\end{center}
+\vspace{1.5cm}
+\begin{flushright}
+\begin{minipage}{0.58\textwidth}
+\large\itshape
+
+To my parents,\\
+for their unconditional love and support\\
+that made this journey possible.\\[14pt]
+
+To my friends and colleagues,\\
+who shared the challenges and rewards\\
+of this academic adventure.\\[14pt]
+
+To everyone working to make the digital world safer.\\[20pt]
+
+\normalfont\normalsize
+\textit{Motez Machghoul}
+\end{minipage}
+\end{flushright}
+\clearpage
+
+% ----------------------------------------------------------------------------
+% Acknowledgments
+% ----------------------------------------------------------------------------
+\chapter*{Acknowledgments}
+\addcontentsline{toc}{chapter}{Acknowledgments}
+
+At the conclusion of this end-of-year project, I wish to express my sincere
+gratitude to everyone who contributed to the realization of this work.
+
+I would first like to thank \textbf{Mr~Raihane Modhaffer}, my academic
+supervisor, whose guidance, availability, and rigorous follow-up throughout
+the project were decisive. His vision of modern cybersecurity challenges
+shaped the technical direction of this report.
+
+I warmly thank \textbf{iTeam University} and the teaching staff for the
+quality of education provided---courses in software engineering, network
+security, and information systems formed the foundation of this work.
+
+My gratitude also goes to the open-source communities behind
+\textbf{FastAPI}, \textbf{Next.js}, \textbf{Docker}, and \textbf{PostgreSQL},
+whose documentation and tools made this project possible.
+
+Finally, I thank my family for their patience and encouragement.
+
+\vspace{1cm}
+\noindent\textit{Motez Machghoul}\\
+iTeam University, 2025--2026
+
+\clearpage
+
+% ----------------------------------------------------------------------------
+% Summary (English)
+% ----------------------------------------------------------------------------
+\chapter*{Summary}
+\addcontentsline{toc}{chapter}{Summary}
+
+This report presents \leaklens{}, an Open-Source Intelligence (OSINT)
+platform for breach-data research, developed as an End-of-Year Project at
+iTeam University. The system allows authorized analysts to query compromised
+records by email, username, IP address, password, name, hash, or domain, and
+returns credential exposure details enriched with supplementary context from
+public APIs.
+
+The solution combines \textbf{Next.js~15} on Vercel for the web interface,
+\textbf{FastAPI} and \textbf{PostgreSQL~16} on a VPS for the API layer, and
+\textbf{Snusbase} as the primary breach-data provider. Access control relies
+on JWT authentication, role-based permissions, invite-only registration, and
+rate limiting. HTTP hardening includes CSP, HSTS, and strict CORS policies.
+
+The main contribution is twofold: a practical OSINT search tool for exposure
+assessment, and a working example of secure full-stack engineering applied
+to a sensitive use case.
+
+\textbf{Keywords:} OSINT, breach data, credential exposure, JWT, RBAC,
+FastAPI, Next.js, Docker, Snusbase, PostgreSQL.
+
+\clearpage
+
+% ----------------------------------------------------------------------------
+% List of abbreviations (project-relevant only)
+% ----------------------------------------------------------------------------
+\chapter*{List of Abbreviations}
+\addcontentsline{toc}{chapter}{List of Abbreviations}
+
+\noindent
+Abbreviations used in this report.
+
+\vspace{0.5cm}
+\renewcommand{\arraystretch}{1.35}
+\begin{longtable}{@{} l L{10.5cm} @{}}
+\toprule
+\textbf{Abbreviation} & \textbf{Definition} \\
+\midrule
+\endhead
+API   & Application Programming Interface \\
+CORS  & Cross-Origin Resource Sharing \\
+CSP   & Content Security Policy \\
+FK    & Foreign Key (database reference) \\
+HSTS  & HTTP Strict Transport Security \\
+HTTPS & HyperText Transfer Protocol Secure \\
+JWT   & JSON Web Token \\
+ORM   & Object-Relational Mapping \\
+OSINT & Open-Source Intelligence \\
+PII   & Personally Identifiable Information \\
+PFA   & Projet de Fin d'Ann\'ees (End-of-Year Project) \\
+RBAC  & Role-Based Access Control \\
+REST  & REpresentational State Transfer \\
+SQL   & Structured Query Language \\
+SSR   & Server-Side Rendering \\
+TLS   & Transport Layer Security \\
+UUID  & Universally Unique Identifier \\
+VPS   & Virtual Private Server \\
+WHOIS & Protocol for querying domain and IP registration records \\
+XSS   & Cross-Site Scripting \\
+\bottomrule
+\end{longtable}
+
+\clearpage

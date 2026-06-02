@@ -1,0 +1,174 @@
+% ============================================================================
+% LeakLens -- OSINT Intelligence Platform for Leaked Data Research
+% PFA Report -- iTeam University 2025/2026
+% ============================================================================
+\documentclass[12pt,a4paper,oneside]{report}
+
+% ---- Encoding & language ---------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+% ---- Page geometry ---------------------------------------------------------
+\usepackage[
+  top=2.5cm, bottom=2.5cm,
+  left=2.5cm, right=2.5cm,
+  headheight=15pt
+]{geometry}
+
+% ---- Fonts -----------------------------------------------------------------
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ---- Graphics & colors -----------------------------------------------------
+\usepackage{graphicx}
+\graphicspath{{figures/}{./figures/}}
+\DeclareGraphicsExtensions{.png,.pdf,.jpg,.jpeg}
+\usepackage{grffile}
+\usepackage{adjustbox}
+\usepackage[dvipsnames,svgnames,table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows.meta,positioning,calc,fit,backgrounds}
+
+% Brand colours (cyber theme)
+\definecolor{CyberNavy}{HTML}{0B1F3A}
+\definecolor{CyberTeal}{HTML}{00B4D8}
+\definecolor{CyberAccent}{HTML}{0077B6}
+\definecolor{CoverRed}{HTML}{C0392B}
+
+% ---- Tables ----------------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% ---- Code listings ---------------------------------------------------------
+\usepackage{listings}
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{codeframe}{HTML}{CCCCCC}
+\definecolor{keyword}{HTML}{0000FF}
+\definecolor{comment}{HTML}{6A9955}
+\definecolor{string}{HTML}{A31515}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{keyword}\bfseries,
+  commentstyle=\color{comment}\itshape,
+  stringstyle=\color{string},
+  breaklines=true,
+  breakatwhitespace=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  tabsize=2,
+  showstringspaces=false,
+  captionpos=b,
+  aboveskip=10pt,
+  belowskip=10pt,
+}
+
+\lstdefinelanguage{yaml}{
+  keywords={true,false,null},
+  sensitive=false,
+  comment=[l]{\#},
+  morestring=[b]',
+  morestring=[b]",
+}
+
+% ---- Headers & footers -----------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small LeakLens --- PFA 2025--2026}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+% ---- Hyperlinks ------------------------------------------------------------
+\usepackage[
+  colorlinks=true,
+  linkcolor=NavyBlue,
+  citecolor=ForestGreen,
+  urlcolor=RoyalBlue,
+  bookmarks=true,
+  pdfauthor={Motez Machghoul},
+  pdftitle={LeakLens -- OSINT Intelligence Platform},
+  pdfsubject={PFA Report -- iTeam University 2025/2026},
+]{hyperref}
+
+% ---- Captions --------------------------------------------------------------
+\usepackage[font=small,labelfont=bf]{caption}
+
+% ---- Bibliography ----------------------------------------------------------
+\usepackage[numbers,sort&compress]{natbib}
+
+% ---- Misc ------------------------------------------------------------------
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{longtable}
+\usepackage{setspace}
+\onehalfspacing
+
+% ---- Custom commands -------------------------------------------------------
+\newcommand{\leaklens}{\textsc{LeakLens}}
+\newcommand{\theplatform}{the platform}
+\newcommand{\tikzfig}[1]{\begin{center}\adjustbox{width=0.92\linewidth,center}{#1}\end{center}}
+\newcommand{\logobox}[2]{\raisebox{-0.4\height}{\includegraphics[height=#1]{#2}}}
+\newcommand{\iteamlogo}{%
+  \IfFileExists{figures/iteam-logo.png}{%
+    \includegraphics[height=2.4cm]{iteam-logo.png}%
+  }{%
+    \begin{tikzpicture}
+      \node[draw=CyberTeal,rounded corners=4pt,minimum width=4.2cm,
+        minimum height=2.2cm,font=\bfseries\large,text=CyberNavy]
+        {iTeam University};
+    \end{tikzpicture}%
+  }%
+}
+\newcommand{\figref}[1]{Figure~\ref{#1}}
+\newcommand{\tabref}[1]{Table~\ref{#1}}
+\newcommand{\chapref}[1]{Chapter~\ref{#1}}
+\newcommand{\secref}[1]{Section~\ref{#1}}
+\newcommand{\chmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}}
+
+% ============================================================================
+\begin{document}
+
+% ---- Front matter ----------------------------------------------------------
+\pagenumbering{roman}
+\input{chapters/00-front}
+
+\tableofcontents
+\listoffigures
+\listoftables
+\clearpage
+
+% ---- Main body -------------------------------------------------------------
+\pagenumbering{arabic}
+\input{chapters/01-preliminary}
+\input{chapters/02-requirements}
+\input{chapters/03-architecture}
+\input{chapters/04-implementation}
+
+% ---- Back matter -----------------------------------------------------------
+\input{chapters/05-conclusion}
+\input{chapters/06-bibliography}
+
+\end{document}

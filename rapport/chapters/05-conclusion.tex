@@ -1,0 +1,47 @@
+% ============================================================================
+% General Conclusion
+% ============================================================================
+\chapter*{General Conclusion}
+\addcontentsline{toc}{chapter}{General Conclusion}
+\markboth{General Conclusion}{}
+
+This end-of-year project resulted in the design, development, and deployment
+of \leaklens{}, an OSINT platform for breach-data research. The work covered
+requirements analysis, security-oriented architecture, and production
+deployment on Vercel and a VPS.
+
+The platform enables analysts to query compromised records across seven search
+types, enriched with public intelligence APIs. Its security model combines
+JWT authentication, RBAC, invite-only registration, rate limiting, and HTTP
+hardening (CSP, HSTS, CORS)---applied as defense-in-depth rather than isolated
+controls.
+
+Beyond the technical deliverable, this project consolidated skills directly
+relevant to cybersecurity practice:
+
+\begin{itemize}[nosep]
+  \item Full-stack development with Next.js and FastAPI;
+  \item Application security: JWT, RBAC, anti-enumeration, rate limiting;
+  \item Containerization with Alpine Docker builds and Trivy scanning;
+  \item External API orchestration (Snusbase, LeakCheck, EmailRep, CertSpotter);
+  \item Split deployment across Vercel and a VPS with Nginx Proxy Manager.
+\end{itemize}
+
+\section*{Future Improvements}
+
+\begin{enumerate}[nosep]
+  \item Custom HTTPS domain with Let's Encrypt via Nginx Proxy Manager;
+  \item Local breach-data indexing with Elasticsearch;
+  \item Automated CI/CD pipeline (GitHub Actions);
+  \item TOTP-based two-factor authentication for analyst accounts;
+  \item SIEM integration for search audit logging;
+  \item Tor-based monitoring for paste sites and darknet forums.
+\end{enumerate}
+
+\vspace{0.8cm}
+\begin{center}
+\parbox{0.82\textwidth}{\itshape\centering
+This project shows that combining OSINT capability with rigorous application
+security is achievable at student scale---and that understanding both sides
+of the problem is essential for any cybersecurity professional.}
+\end{center}

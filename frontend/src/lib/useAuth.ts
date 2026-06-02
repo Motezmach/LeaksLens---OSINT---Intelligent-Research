@@ -50,5 +50,16 @@ export function useAuth() {
     router.push("/login");
   }, [clear, router]);
 
-  return { user, accessToken, login, register, logout, setUser };
+  const loginWithDemoKey = useCallback(
+    async (key: string) => {
+      const { data } = await api.post("/auth/demo", { key });
+      setTokens(data.access_token, data.refresh_token);
+      const me = await api.get<User>("/auth/me");
+      setUser(me.data);
+      return me.data;
+    },
+    [setTokens, setUser]
+  );
+
+  return { user, accessToken, login, register, logout, loginWithDemoKey, setUser };
 }
